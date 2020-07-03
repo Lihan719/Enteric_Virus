@@ -1,0 +1,651 @@
+---
+title: "Enteric Virus"
+author: "Lihan Tang"
+date: "21/06/2020"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+## Data
+
+Fisrtly, library the packages will be used for the project, such as "dplyr", "ggplot", "knitr" and so on.
+
+```{r, message = FALSE}
+###Set up
+###Load the data and used packages
+library(tidyverse)
+library(readxl)
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(purrr)
+library(knitr)
+library(stringr)
+library(purrr)
+library(nnet)
+
+```
+
+Then, load the data and make it as tibble.
+
+```{r, message = FALSE}
+file_name <- "Data for enteric virus MSc.xlsx"
+Enteric_virus <- read_excel(file_name)
+Enteric_virus <- as_tibble(Enteric_virus)
+```
+
+For analyzing the data, the preprocessing of the data are conducted.
+
+```{r, message = FALSE}
+enteric_virus <- Enteric_virus%>%
+  mutate(is_coinf = replace_na(as.numeric(is_coinf),0))%>%
+  mutate(if_coinf = purrr::map_lgl(.$is_coinf,~ .>1))%>%
+  mutate(if_coinf = as.numeric(if_coinf))%>%
+  mutate(is_noinf = purrr::map_lgl(.$is_coinf,~ .==0))%>%
+  mutate(is_noinf = as.numeric(is_noinf))%>%
+  mutate(is_inf = purrr::map_lgl(.$is_coinf,~ .>0))%>%
+  mutate(is_inf = as.numeric(is_inf))%>%
+  mutate(is_single = purrr::map_lgl(.$is_coinf,~ .==1))%>%
+  mutate(is_single = as.numeric(is_single))%>%
+  mutate(Num_common = -(Rotavirus+ Norovirus + Kobuvirus + Sapovirus + Mastadenovirus + Mamastrovirus - 12))%>%
+  mutate(is_common = purrr::map_lgl(.$Num_common,~ .>=1))%>%
+  mutate(is_common = as.numeric(is_common))%>% 
+  mutate(is_unclassified = -(`Unclassified virus`-2))%>%
+  mutate(Num_uncommon = is_coinf-Num_common
+         - `is_unclassified` )%>%
+  mutate(is_uncommon = purrr::map_lgl(.$Num_uncommon,~ .>=1))%>%
+  mutate(is_uncommon = as.numeric(is_uncommon))%>%
+  mutate(is_coinf = as.factor(is_coinf))%>%
+  mutate(if_coinf = as.factor(if_coinf))%>%
+  mutate(is_noinf = as.factor(is_noinf))%>%
+  mutate(is_single = as.factor(is_single))%>%
+  mutate(is_inf = as.factor(is_inf))%>%
+  mutate(Num_common = as.factor(Num_common))%>%
+  mutate(Num_uncommon = as.factor(Num_uncommon))%>%
+  mutate(is_unclassified = as.factor(is_unclassified))%>%
+  mutate(is_common = as.factor(is_common))%>%
+  mutate(is_uncommon = as.factor(is_uncommon))%>%
+  mutate(Gender=as.factor(Gender))%>%
+  mutate(SiteRecruitment=as.factor(SiteRecruitment))%>%
+  mutate(ContactDiar=as.factor(ContactDiar))%>%
+  mutate(Tap=as.factor(Tap))%>%
+  mutate(Well=as.factor(Well))%>%
+  mutate(Rain=as.factor(Rain))%>%
+  mutate(River=as.factor(River))%>%
+  mutate(Pond=as.factor(Pond))%>%
+  mutate(Bottled=as.factor(Bottled))%>%
+  mutate(OtherWS=as.factor(OtherWS))%>%
+  mutate(KeepAnimal=as.factor(KeepAnimal))%>%
+  mutate(KillingAnimal=as.factor(KillingAnimal))%>%
+  mutate(EatCookRawMeat=as.factor(EatCookRawMeat))
+  
+```
+
+
+## The distribution of the virus in different areas
+
+Firstly, we are intersted in the number of patients infected with different types of viruses in differnet areas. Therefore, the patients are grouped by the Centrally City. Then, in each area we investigate the number of patients who has no infection of the viruses tested or has single infection or has coinfection. The barplots are shown below.
+
+```{r, message = FALSE}
+table1 = enteric_virus %>%
+  select(`Sample ID`,CentrallyCity,if_coinf,is_single,is_noinf)%>%
+  pivot_longer(cols = -c(`Sample ID`,CentrallyCity),names_to = "Infection_type",values_to="is_infected")%>%
+  filter(is_infected == 1)%>%
+  group_by(CentrallyCity,Infection_type) %>%
+  summarise(counts=n()) %>%
+  mutate(perc=counts/sum(counts))
+
+ggplot(table1, aes(x=CentrallyCity, y=counts, fill = Infection_type)) +
+  geom_bar(stat="identity",position = "dodge",width = 0.7) +
+  labs(x = "Area", y = "Counts", fill = "Virus_type",
+       title = "The number of the types of viruses infected by area")+
+  theme(axis.text=element_text(size=5,face = "bold"))
+  
+```
+
+
+```{r, message = FALSE}
+table1%>%
+  ungroup()%>%
+  group_by(CentrallyCity)%>%
+  summarise(total = sum(counts))%>%
+  mutate(perc=total/sum(total))
+```
+
+From above plot and table, the number patients in Dong Thap city are observed most. Also, for better visulasing the data, we can only analyses the patients in Dong Thap city to see what viruses are obeserved most in different area. Howevwe, it is clear that for the patients in Dong Thap city the number of patient who has no infection of the viruses tested accounts for the majority of the population. Also, the number of patients who has single infection are larger than the number of the number of patients who has coinfection.
+
+Then, I focus on the patients in Dong Thap city for better analyzing and visualizing the data, since this part of patients accounts for approximately 95% of the dataset. Then, the number of patients who got different types of viruses infected in Dong Thap city are summarised. Note that in this part, for the patients infected with the uncommon viruses, no matter how many different types of viruses the patients are infected, they are only counted once. Also, for the patients who has coinfection of common viruses and uncommon viruses or unclassified viruses, they will be count twice or more times.
+
+```{r, message = FALSE}
+table2 <- enteric_virus %>%
+  filter(CentrallyCity == "Dong Thap")%>%
+  select(`Sample ID`,Rotavirus,Norovirus,Kobuvirus,Sapovirus, Mastadenovirus,Mamastrovirus,`Unclassified virus`,is_uncommon,is_noinf)%>%
+  mutate(is_uncommon = -(as.numeric(is_uncommon)-3))%>%
+  mutate(is_noinf = -(as.numeric(is_noinf)-3))%>%
+  pivot_longer(cols = -c(`Sample ID`),names_to = "Virus_type",values_to="is_infected")%>%
+  filter(is_infected == 1)%>%
+  group_by(Virus_type) %>%
+  summarise(counts=n())%>%
+  mutate(perc= counts/670)
+
+ggplot(table2, aes(x = Virus_type,y=perc*100, fill = Virus_type)) +
+  geom_bar(stat="identity",position = "dodge",width = 0.7) +
+  labs(x = "Virus type", y = "Percentage", fill = "Virus type",
+       title = "The percentage of the types of viruses infected by in Dong Thap city")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5,size=10,face = "bold")) 
+```
+
+From the above plots, the people who are testes for no infection are the most. For the infected patients, 205 patients are infected by the uncommon viruses, followed by 151 patients infected by Rotavirus. For the six common viruses, the patients infected with Rotavirus are the most, while the patients infected with Kobuvirus are the least.
+
+Then for the Dong Thap city, the number of patients who have different infection type in different provincial cities are summarised.
+
+```{r, message = FALSE}
+table3 = enteric_virus %>%
+  filter(CentrallyCity == "Dong Thap")%>%
+  select(`Sample ID`,ProvincialCity,Rotavirus,Norovirus,Kobuvirus,Sapovirus, Mastadenovirus,Mamastrovirus,`Unclassified virus`,is_uncommon,is_noinf)%>%
+  mutate(is_uncommon = -(as.numeric(is_uncommon)-3))%>%
+  mutate(is_noinf = -(as.numeric(is_noinf)-3))%>%
+  pivot_longer(cols = -c(`Sample ID`,ProvincialCity),names_to = "Virus_type",values_to="is_infected")%>%
+  filter(is_infected == 1)%>%
+  group_by(ProvincialCity,Virus_type) %>%
+  summarise(counts=n())%>%
+  mutate(perc= counts/670)
+
+ggplot(table3, aes(x = Virus_type,y=perc*100, fill = Virus_type)) +
+  geom_bar(stat="identity",position = "dodge",width = 0.7) +
+  facet_wrap(vars(ProvincialCity))+
+  labs(x = "Area", y = "Percentage", fill = "Virus_type",
+       title = "The percentage of patients infected with different types of viruses in Dong Thap city in different area")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5,size=8,face = "bold"))
+```
+
+From the above plots, the data are most observed in Cao Lanh and TP.Cao Lanh and the distribution of the viruses observed for this two city are similar, which are also resembles that of the Dong Thap city.
+
+Therefore, we can conclude that the viruses are observed most Dong Thap city. And in Dong thap city, 39% patients are not infected and 37% patients are single infection, while only 25% patients are coinfected.
+
+What's more, in Dong Thap city, applroximately 30.6% of the patients are observed to be infected with some uncommon viruses. For the common viruses, 22.5 patients are infected with Rotavirus, while 0.75% patients are infected by Kobuvirus. For the uncommon viruses, only 3.7% patients are infected by unclassified viruses. Therefore, it can be concluded that actually most of the patients are infected by some common pathogens or the pathogens that can be classified.
+
+## The distribution of the combination of the coinfection in different areas
+
+For this dataset, we are more interested in the coinfection. Therefore, the combinations of the coinfections are investigated. Firstly, the combination of the coinfection or the type of single infection are summarised.
+
+```{r, message = FALSE}
+coinf_table <- Enteric_virus%>%
+  mutate(is_coinf = replace_na(as.numeric(is_coinf),0))%>%
+  mutate(if_coinf = purrr::map_lgl(.$is_coinf,~ .>1))%>%
+  mutate(if_coinf = as.numeric(if_coinf))%>%
+  mutate(is_noinf = purrr::map_lgl(.$is_coinf,~ .==0))%>%
+  mutate(is_noinf = as.numeric(is_noinf))%>%
+  mutate(is_inf = purrr::map_lgl(.$is_coinf,~ .>0))%>%
+  mutate(is_inf = as.numeric(is_inf))%>%
+  mutate(is_single = purrr::map_lgl(.$is_coinf,~ .==1))%>%
+  mutate(is_single = as.numeric(is_single))%>%
+  mutate(Num_common = -(Rotavirus+ Norovirus + Kobuvirus + Sapovirus + Mastadenovirus + Mamastrovirus - 12))%>%
+  mutate(is_common = purrr::map_lgl(.$Num_common,~ .>=1))%>%
+  mutate(is_common = as.numeric(is_common))%>% 
+  mutate(is_unclassified = -(`Unclassified virus`-2))%>%
+  mutate(Num_uncommon = is_coinf-Num_common
+         - `is_unclassified` )%>%
+  mutate(is_uncommon = purrr::map_lgl(.$Num_uncommon,~ .>=1))%>%
+  mutate(is_uncommon = as.numeric(is_uncommon))%>%
+  filter(is_coinf >0)
+
+n<- length(coinf_table$is_coinf)
+sin_common<- numeric(n)
+sin_uncommon<- numeric(n)
+sin_unclassified<- numeric(n)
+co_allcommon<- numeric(n)
+co_alluncommon<- numeric(n)
+co_allunclassified<- numeric(n)
+co_com_uncom<- numeric(n)
+co_com_unclassified<- numeric(n)
+co_uncom_unclassified<- numeric(n)
+co_alltypes<- numeric(n)
+  
+  
+for(i in 1:n){
+  if(coinf_table$is_single[i] ==1){
+    if(coinf_table$is_common[i] == 1){
+      sin_common[i]<- 1
+    }else if(coinf_table$is_uncommon[i] == 1){
+      sin_uncommon[i]<-1
+    }else{
+      sin_unclassified[i]<-1
+    }
+  }else{
+    if(coinf_table$is_common[i] ==1){
+      if(coinf_table$is_uncommon[i] ==1){
+        if(coinf_table$is_unclassified[i]==1){
+          co_alltypes[i]<-1
+        }else{
+          co_com_uncom[i]<-1 
+        }
+      }else if(coinf_table$is_unclassified[i] ==1){
+        co_com_unclassified[i]<-1
+      }else{
+        co_allcommon[i]<-1
+      }
+    }else if(coinf_table$is_uncommon[i] ==1){
+      if(coinf_table$is_unclassified[i] == 1){
+        co_uncom_unclassified[i]<-1
+      }else{
+        co_alluncommon[i]<-1
+      }
+    }else{
+      co_allunclassified[i]<-1
+    }
+  }
+} 
+
+
+
+coinf_table <- coinf_table %>%
+  filter(is_coinf > 0)%>%
+  mutate(sin_common = sin_common)%>%
+  mutate(sin_uncommon = sin_uncommon)%>%
+  mutate(sin_unclassified = sin_unclassified)%>%
+  mutate(co_allcommon = co_allcommon)%>%
+  mutate(co_allunclassified = co_allunclassified)%>%
+  mutate(co_alluncommon = co_alluncommon)%>%
+  mutate(co_com_uncom = co_com_uncom)%>%
+  mutate(co_com_unclassified = co_com_unclassified)%>%
+  mutate(co_uncom_unclassifiedc= co_uncom_unclassified)%>%
+  mutate(co_alltypes=co_alltypes)
+```
+
+
+Then, the distribution of the combination of the coinfection are examined.
+
+```{r, message = FALSE}
+coinf_table1 <- coinf_table%>%
+  select(`Sample ID`,sin_common,sin_unclassified,sin_uncommon,co_allcommon,co_allunclassified,co_alluncommon,co_com_unclassified,co_com_uncom,co_uncom_unclassified,co_alltypes)%>%
+  pivot_longer(cols = -c(`Sample ID`),names_to = "Combination_type",values_to="is_combi")%>%
+  filter(is_combi == 1)%>%
+  group_by(Combination_type) %>%
+  summarise(counts=n())%>%
+  mutate(perc = counts/sum(counts))
+
+ggplot(coinf_table1, aes(x = Combination_type,y=counts, fill = Combination_type)) +
+  geom_bar(stat="identity",position = "dodge",width = 0.7) +
+  labs(x = "Combination type", y = "Counts", fill = "Combination type",
+       title = "The number of patient of the different types of single infection or coinfection")+
+  theme(axis.text.x = element_text(angle = 45, hjust = 0.5, vjust = 0.5,size=10,face = "bold")) 
+```
+
+From above plot, for the infected patients, most patients are single infection of common viruses. And there is no patients who are infected by the uncommon and unclassified viruses. Also, for the coinfection patients, the patients are usually infected with the common viruses and unclassified viruses combination. The proportions of patients coinfected all by common or uncommon viruses are almost equal.
+
+Therefore, we can conclude that, most people are actually single infected with some common virus. And for the coinfection patients, most patients are observed with combinations with some common pathogens.
+
+## The risk factors corresponding to the coinfection
+
+Firstly, choose the possible useful variables and form a new table to fit the models.
+
+```{r}
+table_riskfactor <- enteric_virus%>%
+  select(Sample_ID = "Sample ID",
+         Age = "Age",
+         Year_of_enrollment="Year of enrollment",
+         SiteRecruitment="SiteRecruitment",
+         Gender="Gender",
+         ContactDiar ="ContactDiar",
+         Tap="Tap",Well="Well",
+         Rain = "Rain",
+         River = "River",
+         Pond = "Pond",
+         Bottled = "Bottled",
+         OtherWS = "OtherWS",
+         KeepAnimal = "KeepAnimal",
+         KillingAnimal = "KillingAnimal",
+         EatCookRawMeat = "EatCookRawMeat",
+         is_coinf ="is_coinf",
+         if_coinf ="if_coinf",
+         Num_common = "Num_common",
+         Num_uncommon ="Num_uncommon"
+         )
+```
+
+
+To investigate the risk factors Corresponding to the coinfections, the number of coinfections should be treated as the categorical data, instead of numeric data. Therefore, the following models are fitted to get the possible corresponding 
+
+### Multinomial Logit Model
+
+#### The binary reponse for the coinfection
+
+Firstly, the binomial logit for if there is the coinfection is fitted. Since the response variable is the binary data, the "glm" function is used to fit the logit model.
+
+```{r}
+bin_model <-
+  glm(
+    if_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + ContactDiar + Tap + Well + Rain + River + Pond + Bottled + KeepAnimal + KillingAnimal + EatCookRawMeat,
+    family = binomial(link = logit),
+    table_riskfactor
+  )
+
+summary(bin_model)
+```
+
+From above model, only the age and Site recruiment 6 is very significant. Therefore,using the Chi-test to drop some variables.
+
+```{r}
+drop1(bin_model, test ="Chi")
+```
+```{r}
+bin_model1 <-   glm(
+    if_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + ContactDiar + Tap + Well + Rain + River + Pond + KeepAnimal + KillingAnimal + EatCookRawMeat,
+    family = binomial(link = logit),
+    table_riskfactor
+  )
+
+summary(bin_model1)
+drop1(bin_model1, test ="Chi")
+```
+```{r}
+bin_model2 <-   glm(
+    if_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + Tap + Well + Rain + River + Pond + KeepAnimal + KillingAnimal + EatCookRawMeat,
+    family = binomial(link = logit),
+    table_riskfactor
+  )
+
+summary(bin_model2)
+drop1(bin_model2, test ="Chi")
+```
+```{r}
+bin_model3 <-   glm(
+    if_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + Tap + Well + Rain + River  + KeepAnimal + KillingAnimal + EatCookRawMeat,
+    family = binomial(link = logit),
+    table_riskfactor
+  )
+
+summary(bin_model3)
+drop1(bin_model3, test ="Chi")
+```
+```{r}
+bin_model4 <-   glm(
+    if_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Well + Tap + River + KillingAnimal + EatCookRawMeat,
+    family = binomial(link = logit),
+    table_riskfactor
+  )
+
+summary(bin_model4)
+drop1(bin_model4, test ="Chi")
+```
+
+```{r}
+bin_model5 <-   glm(
+    if_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Well  + KillingAnimal + EatCookRawMeat,
+    family = binomial(link = logit),
+    table_riskfactor
+  )
+
+summary(bin_model5)
+drop1(bin_model5, test ="Chi")
+```
+
+```{r}
+step(bin_model,trace = 0)
+```
+
+
+#### The multinomial reponse for the coinfection
+
+After fitting the binomial logit model, the sepecific number of viruses in coinfection are interested. In this condition, the reponse variable does not have two categories. Suppose for the $i_th$ observation, the number of viruses coinfected is j. Then, $Y_{i,j} = 1$ and $\sum_{j=0}^{J} Y_{i,j}=1$, where J is the total possible number of viruses coinfected for one patient. 
+
+
+```{r,message=False}
+library(nnet)
+library(car)
+
+mul_model <-
+  multinom(
+    is_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + ContactDiar + Tap + Well + Rain + River + Pond + Bottled + KeepAnimal + KillingAnimal + EatCookRawMeat,
+    table_riskfactor
+  )
+
+summary(mul_model)
+Anova(mul_model)
+```
+
+
+From above model, only the age and Site recruiment 6 is very significant. Therefore,using the AIC to discard some variables.
+
+```{r}
+mul_model_r <- step(mul_model)
+summary(mul_model_r)
+Anova(mul_model_r)
+```
+
+The animal contact behaviour is of great interest in exploring the risk factors corresponding to the coninfection. So add "KillingAnimal" and  "EatCookRawMeat" to the multinomial model.
+
+```{r, message = FALSE}
+mul_model1 <-
+  multinom(is_coinf ~ Age + SiteRecruitment + Gender + 
+    Well + KillingAnimal + EatCookRawMeat,
+    table_riskfactor
+  )
+
+summary(mul_model1)
+Anova(mul_model1)
+```
+
+### Ordinal Multinomial Responses
+For the J ordered categories, the ordinal models worked with the cumulative probability $\gamma_{i,j} = Pr(Y_i \leq j) $ and $\gamma_{i,J} = 1$. Therefore, $g(\gamma_{i,j}) = \theta_{j} - x_i^T\beta$. $g(\gamma_{i,j})$ is the link fucntion and there are many choices for this link fucntion.
+
+So, the response variable should be ordered.
+
+```{r}
+ord_table_riskfactor <- table_riskfactor%>%
+  mutate(is_coinf = ordered(is_coinf))
+```
+
+
+#### Propotional Odds Model: 
+  
+Firstly for $\gamma_j(x_i) = P(Y_i \leq j | x_i)$, choosing the logit link and fit the proportional odds model. 
+
+
+```{r}
+library(MASS)
+ord_pro_model <- polr(is_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + ContactDiar + Tap + Well + Rain + River + Pond + Bottled + KeepAnimal + KillingAnimal + EatCookRawMeat,
+    ord_table_riskfactor)
+
+summary(ord_pro_model)
+Anova(ord_pro_model)
+```
+
+Then, use **step** function  to delete some variables to reduce the AIC.
+
+```{r}
+ord_pro_modeli <-step(ord_pro_model)
+
+summary(ord_pro_modeli)
+Anova(ord_pro_modeli)
+```
+
+
+#### Ordered Probit Model: 
+  
+Use the Probit link and fit the proportional odds model.
+
+$\Phi^{-1} (\gamma_j(x_i)) = \theta_j - \beta^T X_i$, $j =1,\dots, J-1$
+
+
+
+```{r}
+ord_probit_model <- polr(is_coinf ~ Age + Year_of_enrollment + SiteRecruitment + Gender + ContactDiar + Tap + Well + Rain + River + Pond + Bottled + KeepAnimal + KillingAnimal + EatCookRawMeat,
+             method = "probit",
+             ord_table_riskfactor)
+summary(ord_probit_model)
+Anova(ord_probit_model)
+```
+
+Reducing the AIC.
+
+```{r}
+ord_probit_modeli <- step(ord_probit_model)
+
+summary(ord_probit_modeli)
+Anova(ord_probit_modeli)
+```
+
+
+## The impacts of coinfection on the disease severity
+Firstly, choose the possible useful variables and form a new table to fit the models.
+
+```{r}
+table_diseases <- enteric_virus%>%
+  rename(Sample_ID = "Sample ID",
+         Age = "Age",
+         Year_of_enrollment="Year of enrollment",
+         SiteRecruitment="SiteRecruitment",
+         Gender="Gender",
+         Length_of_stay="Length of stay",
+         BloodStool="BloodStool",
+         MucoidStool="MucoidStool",
+         NumberDiarEpi="NumberDiarEpi",
+         AbdominalPain="AbdominalPain",
+         ThreeDaysFever="ThreeDaysFever",
+         is_coinf ="is_coinf",
+         if_coinf ="if_coinf"
+         )%>%
+  mutate(is_bloodstool = as.factor(purrr::map_lgl(.$BloodStool,~ .==1)))%>%
+  mutate(is_Mucoidstool = as.factor(purrr::map_lgl(.$MucoidStool,~ .==1)))%>%
+  mutate(is_AbdominalPain = as.factor(purrr::map_lgl(.$AbdominalPain,~ .==1)))%>%
+  mutate(is_ThreeDaysFever= as.factor(purrr::map_lgl(.$ThreeDaysFever,~ .==1)))%>%
+  mutate(BloodStool = as.factor(ThreeDaysFever))%>%
+  mutate(MucoidStool = as.factor(MucoidStool))%>%
+  mutate(AbdominalPain= as.factor(AbdominalPain))%>%
+  mutate(ThreeDaysFever= as.factor(ThreeDaysFever))
+```
+
+For this part, the Blood Stool, Mucoid Stool, Abdominal Pain and the three days fever these four symptoms are fitted mainly.
+
+### The multinomial logit model
+
+Firstly, the multinomial logit model are fitted for the four symtoms.
+
+#### Blood Stool 
+
+```{r}
+bloodstool_mul <-
+  multinom(
+     BloodStool ~ Age + Year_of_enrollment + SiteRecruitment + Gender + is_coinf,
+    table_diseases 
+  )
+
+summary(bloodstool_mul)
+Anova(bloodstool_mul)
+```
+
+
+ Then,using the AIC to discard some variables.
+
+```{r}
+step(bloodstool_mul)
+```
+Through the results of the step function, we need to keep the is_coinf term, so only the gender will be deleted.
+
+```{r}
+bloodstool_mul_r <- multinom(
+     BloodStool ~ Age + Year_of_enrollment + SiteRecruitment +  is_coinf,
+    table_diseases 
+  )
+summary(bloodstool_mul_r)
+Anova(bloodstool_mul_r)
+```
+
+
+#### Mucoid Stool
+
+```{r}
+MucoidStool_mul <-
+  multinom(
+     MucoidStool ~ Age + Year_of_enrollment + SiteRecruitment + Gender + is_coinf,
+    table_diseases 
+  )
+
+summary(MucoidStool_mul)
+Anova(MucoidStool_mul)
+```
+
+
+Then,using the AIC to discard some variables.
+
+```{r}
+step(bloodstool_mul)
+```
+Through the results of the step function, we need to keep the is_coinf term, so only the gender will be deleted.
+
+```{r}
+MucoidStool_mul_r <- multinom(
+     MucoidStool ~ Age + Year_of_enrollment + SiteRecruitment + is_coinf,
+    table_diseases 
+  )
+
+summary(MucoidStool_mul_r)
+Anova(MucoidStool_mul_r)
+```
+
+#### Abdominal Pain
+
+```{r}
+AbdominalPain_mul <-
+  multinom(
+     AbdominalPain ~ Age + Year_of_enrollment + SiteRecruitment + Gender + is_coinf,
+    table_diseases 
+  )
+
+summary(AbdominalPain_mul)
+Anova(AbdominalPain_mul)
+```
+
+Then,using the AIC to discard some variables.
+
+```{r}
+step(AbdominalPain_mul)
+```
+Through the results of the step function, the is_coinf term is deleted first, so this might suggest that there is no relationship between the coinfection with Abdominal pain
+
+```{r}
+AbdominalPain_mul_r <-   multinom(
+     AbdominalPain ~ Age + SiteRecruitment,
+    table_diseases 
+  )
+summary(AbdominalPain_mul_r)
+Anova(AbdominalPain_mul_r)
+```
+
+#### Three days fever
+
+```{r}
+threedaysfever_mul <-
+  multinom(
+     ThreeDaysFever ~ Age + Year_of_enrollment + SiteRecruitment + Gender + is_coinf,
+    table_diseases 
+  )
+
+summary(threedaysfever_mul)
+Anova(threedaysfever_mul)
+```
+
+Then,using the AIC to discard some variables.
+
+```{r}
+step(threedaysfever_mul)
+```
+Through the results of the step function, we need to keep the is_coinf term, so only the gender will be deleted.
+
+```{r}
+threedaysfever_mul_r <- multinom(
+     ThreeDaysFever ~ Age + Year_of_enrollment + SiteRecruitment + is_coinf,
+    table_diseases 
+  )
+summary(threedaysfever_mul_r)
+Anova(threedaysfever_mul_r)
+```
+
+
+
