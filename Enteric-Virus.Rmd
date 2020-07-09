@@ -25,7 +25,6 @@ library(ggplot2)
 library(purrr)
 library(knitr)
 library(stringr)
-library(purrr)
 library(nnet)
 
 ```
